@@ -20,9 +20,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -31,8 +29,11 @@ public class UserService {
     UserRepository userRepository;
     UserMapper userMapper;
     PasswordEncoder passwordEncoder;
+    EmailService emailService;
     @Autowired
     private JavaMailSender mailSender;
+
+    private Map<String, String> otpStorage = new HashMap<>();
 
     public UserEntity createUser(UserCreationRequest request) {
 
@@ -79,38 +80,58 @@ public class UserService {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
 
         if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
-            throw new AppException(ErrorCode.INVALID_PASSWORD); // Ném lỗi nếu mật khẩu cũ không khớp
+            throw new AppException(ErrorCode.INVALID_PASSWORD);
         }
 
-        // Mã hóa mật khẩu mới và lưu vào cơ sở dữ liệu
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
     }
-    public void forgotPassword(ForgotPasswordRequest request) {
-        UserEntity userEntity = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+    public void forgotPassword(String email) {
+        UserEntity user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Email không tồn tại"));
 
-        String resetToken = UUID.randomUUID().toString();
-        userEntity.setResetToken(resetToken);
-        userRepository.save(userEntity);
-
-        sendResetPasswordEmail(userEntity.getEmail(), resetToken);
+        String otp = generateOtp();
+        otpStorage.put(email, otp);
+        sendOtpEmail(email, otp);
     }
 
-    private void sendResetPasswordEmail(String email, String resetToken) {
+    public void resetPassword(String email, String otp, String newPassword) {
+        if (!validateOtp(email, otp)) {
+            throw new RuntimeException("Mã OTP không hợp lệ");
+        }
+
+        UserEntity user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Email không tồn tại"));
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        otpStorage.remove(email);
+    }
+
+    private void sendOtpEmail(String email, String otp) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(email);
-        message.setSubject("Reset Password");
-        message.setText("To reset your password, click the link below:\n"
-                + "http://localhost:8080/database/auth/reset-password?token=" + resetToken);
+        message.setSubject("Reset Password OTP");
+        message.setText("Your OTP to reset password is: " + otp);
         mailSender.send(message);
     }
-    public void resetPassword(ResetPasswordRequest request) {
-        UserEntity userEntity = userRepository.findByResetToken(request.getToken())
-                .orElseThrow(() -> new AppException(ErrorCode.INVALID_KEY));
 
-        userEntity.setPassword(passwordEncoder.encode(request.getNewPassword()));
-        userEntity.setResetToken(null);
+    private String generateOtp() {
+        Random random = new Random();
+        int otp = 100000 + random.nextInt(900000);
+        return String.valueOf(otp);
+    }
+
+    private boolean validateOtp(String email, String otp) {
+        String storedOtp = otpStorage.get(email);
+        return otp.equals(storedOtp);
+    }
+
+    public void updatePassword(String email, String newPassword) {
+        UserEntity userEntity = userRepository.findByEmail(email)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+
+        userEntity.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(userEntity);
     }
 }

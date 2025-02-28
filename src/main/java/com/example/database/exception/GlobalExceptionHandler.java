@@ -2,13 +2,27 @@ package com.example.database.exception;
 
 
 import com.example.database.dto.request.ApiResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.servlet.NoHandlerFoundException;
 
 @ControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(NoHandlerFoundException.class)
+    public ResponseEntity<ApiResponse> handleNoHandlerFoundException(NoHandlerFoundException ex) {
+        ApiResponse apiResponse = new ApiResponse();
+        if (ex.getRequestURL().contains("abc")) {
+            apiResponse.setCode(ErrorCode.NOT_FOUND.getCode());
+            apiResponse.setMessages("UserEntity not found");
+        } else {
+            apiResponse.setCode(ErrorCode.NOT_FOUND.getCode());
+            apiResponse.setMessages("Endpoint not found: " + ex.getRequestURL());
+        }
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(apiResponse);
+    }
     @ExceptionHandler(value = Exception.class)
     ResponseEntity<ApiResponse> handLingRuntimeException(RuntimeException exception){
         ApiResponse apiResponse = new ApiResponse();

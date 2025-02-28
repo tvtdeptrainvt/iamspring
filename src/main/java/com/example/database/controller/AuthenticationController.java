@@ -4,13 +4,16 @@ import com.example.database.dto.request.*;
 import com.example.database.dto.response.AuthenticationResponse;
 import com.example.database.dto.response.IntrospectResponse;
 import com.example.database.entity.UserEntity;
+import com.example.database.exception.AppException;
 import com.example.database.repository.UserRepository;
 import com.example.database.service.AuthenticationService;
+import com.example.database.service.EmailService;
 import com.example.database.service.UserService;
 import com.nimbusds.jose.JOSEException;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -28,6 +31,8 @@ import java.text.ParseException;
 public class AuthenticationController {
     AuthenticationService authenticationService;
     UserService userService;
+    @Autowired
+    private EmailService emailService;
     @PostMapping("/token")
     ApiResponse<AuthenticationResponse> authenticate(@RequestBody AuthenticationRequest request) {
         var result = authenticationService.authenticate(request);
@@ -54,14 +59,25 @@ public class AuthenticationController {
         return ApiResponse.<Void>builder().build();
     }
     @PostMapping("/forgot-password")
-    public ResponseEntity<Void> forgotPassword(@RequestBody ForgotPasswordRequest request) {
-        userService.forgotPassword(request);
-        return ResponseEntity.ok().build();
+    public ResponseEntity<?> forgotPassword(@RequestParam String email) {
+        try {
+            userService.forgotPassword(email);
+            return ResponseEntity.ok("OTP sent to your email");
+        } catch (RuntimeException ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage());
+        }
     }
 
     @PostMapping("/reset-password")
-    public ResponseEntity<Void> resetPassword(@RequestBody ResetPasswordRequest request) {
-        userService.resetPassword(request);
-        return ResponseEntity.ok().build();
+    public ResponseEntity<?> resetPassword(
+            @RequestParam String email,
+            @RequestParam String otp,
+            @RequestParam String newPassword) {
+        try {
+            userService.resetPassword(email, otp, newPassword);
+            return ResponseEntity.ok("Password updated successfully");
+        } catch (RuntimeException ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage());
+        }
     }
 }
