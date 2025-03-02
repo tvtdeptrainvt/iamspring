@@ -3,11 +3,13 @@ package com.example.database.service;
 
 import com.example.database.dto.request.*;
 import com.example.database.dto.response.UserResponse;
+import com.example.database.entity.UserActivityLog;
 import com.example.database.entity.UserEntity;
 import com.example.database.enums.Role;
 import com.example.database.exception.AppException;
 import com.example.database.exception.ErrorCode;
 import com.example.database.mapper.UserMapper;
+import com.example.database.repository.UserActivityLogRepository;
 import com.example.database.repository.UserRepository;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +22,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.*;
 
 @Service
@@ -30,6 +33,7 @@ public class UserService {
     UserMapper userMapper;
     PasswordEncoder passwordEncoder;
     EmailService emailService;
+    UserActivityLogRepository userActivityLogRepository;
     @Autowired
     private JavaMailSender mailSender;
 
@@ -47,6 +51,12 @@ public class UserService {
         HashSet<String> roles = new HashSet<>();
         roles.add(Role.USER.name());
         userEntity.setRoles(roles);
+        UserActivityLog log = new UserActivityLog();
+        log.setUserId(userEntity.getId());
+        log.setActivity("create acc");
+        log.setCreatedAt(LocalDateTime.now());
+        userActivityLogRepository.save(log);
+
 
         return userRepository.save(userEntity);
     }
@@ -76,15 +86,21 @@ public class UserService {
                 .orElseThrow(() -> new RuntimeException("UserEntity not fond")));
     }
     public void changePassword(int userId, ChangePasswordRequest request) {
-        UserEntity user = userRepository.findById(userId)
+        UserEntity userEntity = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
 
-        if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
+        if (!passwordEncoder.matches(request.getOldPassword(), userEntity.getPassword())) {
             throw new AppException(ErrorCode.INVALID_PASSWORD);
         }
 
-        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
-        userRepository.save(user);
+        userEntity.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        UserActivityLog log = new UserActivityLog();
+        log.setUserId(userEntity.getId());
+        log.setActivity("Change PassWord");
+        log.setCreatedAt(LocalDateTime.now());
+        userActivityLogRepository.save(log);
+
+        userRepository.save(userEntity);
     }
     public void forgotPassword(String email) {
         UserEntity user = userRepository.findByEmail(email)
@@ -100,12 +116,17 @@ public class UserService {
             throw new RuntimeException("Mã OTP không hợp lệ");
         }
 
-        UserEntity user = userRepository.findByEmail(email)
+        UserEntity userEntity = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Email không tồn tại"));
 
-        user.setPassword(passwordEncoder.encode(newPassword));
-        userRepository.save(user);
+        userEntity.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(userEntity);
         otpStorage.remove(email);
+        UserActivityLog log = new UserActivityLog();
+        log.setUserId(userEntity.getId());
+        log.setActivity("Reset password");
+        log.setCreatedAt(LocalDateTime.now());
+        userActivityLogRepository.save(log);
     }
 
     private void sendOtpEmail(String email, String otp) {
